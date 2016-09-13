@@ -30,7 +30,7 @@ class MemberLocationViewController: UIViewController, MKMapViewDelegate,UITableV
     var addressArray: [String] = []
     
     // 位置データカウンター
-    var dataCount: Int = 0
+    var dataCount: Int?
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -70,19 +70,21 @@ class MemberLocationViewController: UIViewController, MKMapViewDelegate,UITableV
          // 位置データの数を取得
          locationsRef.child(memberUid!).observeEventType(.Value, withBlock: { snapshot in
             let valueDictionary = snapshot.value
-            self.dataCount = valueDictionary!.count
-            self.addressArray = [String](count: self.dataCount, repeatedValue: "")
+            self.dataCount = valueDictionary?.count
+            
+            if self.dataCount != nil {
+                self.addressArray = [String](count: self.dataCount!, repeatedValue: "")
          
-            // 逆ジオコーディング結果をlocationArrayと紐付けするために数字ラベルを付与
-            var count = 0
-            for location in self.locationArray {
-                count = count + 1
-                let latitude = location["latitude"] as? CLLocationDegrees
-                let longitude = location["longitude"] as? CLLocationDegrees
-                self.reverseGeocode(latitude!, longitude!, count)
+                // 逆ジオコーディング結果をlocationArrayと紐付けするために数字ラベルを付与
+                var count = 0
+                for location in self.locationArray {
+                    count = count + 1
+                    let latitude = location["latitude"] as? CLLocationDegrees
+                    let longitude = location["longitude"] as? CLLocationDegrees
+                    self.reverseGeocode(latitude!, longitude!, count)
+                }
             }
          })
-
     }
     
     // 逆ジオコーディング
