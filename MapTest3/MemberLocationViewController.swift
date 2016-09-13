@@ -25,9 +25,12 @@ class MemberLocationViewController: UIViewController, MKMapViewDelegate,UITableV
     var slideInViewOpen = false
     
     // ①位置データを入れる辞書配列、②その位置データを入れる配列、③住所を入れる配列
-    var locationDic: [String: AnyObject] = [:]
+    var locationDic: [String: AnyObject] = [ : ]
     var locationArray:[AnyObject] = []
     var addressArray: [String] = []
+    
+    // 位置データカウンター
+    var dataCount: Int = 0
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -60,15 +63,30 @@ class MemberLocationViewController: UIViewController, MKMapViewDelegate,UITableV
                 
                 // ピンの設置
                 self.settingAnnotation(latitude!, longitude!, dateAndTime!)
-                
-                // 住所を取得、テーブルビュー更新
-                self.reverseGeoCode(latitude!, longitude!)
             }
         })
+
+
+         // 位置データの数を取得
+         locationsRef.child(memberUid!).observeEventType(.Value, withBlock: { snapshot in
+            let valueDictionary = snapshot.value
+            self.dataCount = valueDictionary!.count
+            self.addressArray = [String](count: self.dataCount, repeatedValue: "")
+         
+            // 逆ジオコーディング結果をlocationArrayと紐付けするために数字ラベルを付与
+            var count = 0
+            for location in self.locationArray {
+                count = count + 1
+                let latitude = location["latitude"] as? CLLocationDegrees
+                let longitude = location["longitude"] as? CLLocationDegrees
+                self.reverseGeocode(latitude!, longitude!, count)
+            }
+         })
+
     }
     
     // 逆ジオコーディング
-    func reverseGeoCode(latitude: CLLocationDegrees, _ longitude: CLLocationDegrees) {
+    func reverseGeocode(latitude: CLLocationDegrees, _ longitude: CLLocationDegrees, _ count: Int) {
         let myGeocoder: CLGeocoder = CLGeocoder()
         myGeocoder.reverseGeocodeLocation(CLLocation(latitude: latitude, longitude: longitude), completionHandler: {(placemarks, error) in
             var address: String = ""
@@ -84,26 +102,24 @@ class MemberLocationViewController: UIViewController, MKMapViewDelegate,UITableV
             } else {
                 address = "住所不明"
             }
-            self.addressArray.insert(address, atIndex: 0)
+            self.addressArray[count - 1] = address
             
-            // 住所取得完了後にテーブルビュー更新、マップの中心地設定
-            if self.addressArray.count == self.locationArray.count {
-                self.tableView.reloadData()
-                
-                // 最新の位置履歴をマップの中心とする（無ければ東京駅を中心）
-                let newLatitude = self.locationArray.first?["latitude"] as? CLLocationDegrees
-                let newLongitude = self.locationArray.first?["longitude"] as? CLLocationDegrees
-                let region: MKCoordinateRegion
-                if (newLatitude != nil) && (newLongitude != nil) {
-                    let coordinate = CLLocationCoordinate2DMake(newLatitude!, newLongitude!)
-                    region = MKCoordinateRegionMakeWithDistance(coordinate, 100000, 100000)
-                } else {
-                    // 東京駅を中心に四方1,000kmを表示領域に設定
-                    let coordinate = CLLocationCoordinate2DMake(35.68, 139.76)
-                    region = MKCoordinateRegionMakeWithDistance(coordinate, 1000000, 1000000)
-                }
-                self.mapView.setRegion(region, animated: true)
+            // 最新の位置履歴をマップの中心とする（無ければ東京駅を中心）
+            let newLatitude = self.locationArray.first?["latitude"] as? CLLocationDegrees
+            let newLongitude = self.locationArray.first?["longitude"] as? CLLocationDegrees
+            let region: MKCoordinateRegion
+            if (newLatitude != nil) && (newLongitude != nil) {
+                let coordinate = CLLocationCoordinate2DMake(newLatitude!, newLongitude!)
+                region = MKCoordinateRegionMakeWithDistance(coordinate, 100000, 100000)
+            } else {
+                // 東京駅を中心に四方1,000kmを表示領域に設定
+                let coordinate = CLLocationCoordinate2DMake(35.68, 139.76)
+                region = MKCoordinateRegionMakeWithDistance(coordinate, 1000000, 1000000)
             }
+            self.mapView.setRegion(region, animated: true)
+
+            // テーブルビュー更新
+            self.tableView.reloadData()
         })
     }
     
