@@ -32,6 +32,13 @@ class MemberLocationViewController: UIViewController, MKMapViewDelegate,UITableV
     // 位置データカウンター
     var dataCount: Int?
     
+    // ピンの種類を設定するフラグ
+    var annotaionFlag = false
+    
+    // 強調ピン(青色)を入れる配列
+    var annotationArray: [MKPointAnnotation] = []
+    
+    
     override func viewDidLoad() {
         super.viewDidLoad()
         
@@ -47,18 +54,16 @@ class MemberLocationViewController: UIViewController, MKMapViewDelegate,UITableV
         //マップビューの初期設定
         mapView.delegate = self
         
-        // 自身のuidを取得
-//        uid = FIRAuth.auth()?.currentUser?.uid
-        
         // メンバーの位置情報を取得・更新
         locationsRef.child(memberUid!).observeEventType(.ChildAdded, withBlock: { snapshot in
             let valueDictionary = snapshot.value as! [String: AnyObject]
+            let dateAndTime = valueDictionary["dateAndTime"] as? String
             let latitude = valueDictionary["latitude"] as? CLLocationDegrees
             let longitude = valueDictionary["longitude"] as? CLLocationDegrees
-            let dateAndTime = valueDictionary["dateAndTime"] as? String
+            let address = valueDictionary["address"] as? String // 0918
             
-            if (latitude != nil)&&(longitude != nil)&&(dateAndTime != nil) {
-                self.locationDic = ["latitude": latitude!, "longitude": longitude!, "dateAndTime": dateAndTime!]
+            if (latitude != nil)&&(longitude != nil)&&(dateAndTime != nil)&&(address != nil) {
+                self.locationDic = [ "dateAndTime": dateAndTime!, "latitude": latitude!, "longitude": longitude!, "address": address!]      // 0918
                 self.locationArray.insert(self.locationDic, atIndex: 0)
                 
                 // ピンの設置
@@ -72,59 +77,25 @@ class MemberLocationViewController: UIViewController, MKMapViewDelegate,UITableV
             let valueDictionary = snapshot.value
             self.dataCount = valueDictionary?.count
             
-            if self.dataCount != nil {
-                self.addressArray = [String](count: self.dataCount!, repeatedValue: "")
-         
-                // 逆ジオコーディング結果をlocationArrayと紐付けするために数字ラベルを付与
-                var count = 0
-                for location in self.locationArray {
-                    count = count + 1
-                    let latitude = location["latitude"] as? CLLocationDegrees
-                    let longitude = location["longitude"] as? CLLocationDegrees
-                    self.reverseGeocode(latitude!, longitude!, count)
-                }
-            }
-         })
-    }
-    
-    // 逆ジオコーディング
-    func reverseGeocode(latitude: CLLocationDegrees, _ longitude: CLLocationDegrees, _ count: Int) {
-        let myGeocoder: CLGeocoder = CLGeocoder()
-        myGeocoder.reverseGeocodeLocation(CLLocation(latitude: latitude, longitude: longitude), completionHandler: {(placemarks, error) in
-            var address: String = ""
-            if(error == nil) {
-                for placemark in placemarks! {
-                    // 住所取得できない場合は住所不明、もしくは空文字。
-                    let administarative = placemark.administrativeArea ?? "住所不明"
-                    let locality = placemark.locality ?? ""
-                    let thorough = placemark.thoroughfare ?? ""
-                    let subthorough = placemark.subThoroughfare ?? ""
-                    address = "\(administarative)\(locality)\(thorough)\(subthorough)"
-                }
-            } else {
-                address = "住所不明"
-            }
-            self.addressArray[count - 1] = address
-            
             // 最新の位置履歴をマップの中心とする（無ければ東京駅を中心）
             let newLatitude = self.locationArray.first?["latitude"] as? CLLocationDegrees
             let newLongitude = self.locationArray.first?["longitude"] as? CLLocationDegrees
             let region: MKCoordinateRegion
             if (newLatitude != nil) && (newLongitude != nil) {
                 let coordinate = CLLocationCoordinate2DMake(newLatitude!, newLongitude!)
-                region = MKCoordinateRegionMakeWithDistance(coordinate, 100000, 100000)
+                region = MKCoordinateRegionMakeWithDistance(coordinate, 10000, 10000)
             } else {
                 // 東京駅を中心に四方1,000kmを表示領域に設定
                 let coordinate = CLLocationCoordinate2DMake(35.68, 139.76)
                 region = MKCoordinateRegionMakeWithDistance(coordinate, 1000000, 1000000)
             }
             self.mapView.setRegion(region, animated: true)
-
+            
             // テーブルビュー更新
             self.tableView.reloadData()
-        })
+         })
     }
-    
+
     // ピンの位置、タイトルを設定
     func settingAnnotation(latitude: CLLocationDegrees, _ longitude: CLLocationDegrees, _ dateAndTime: String) {
         let annotation = MKPointAnnotation()
@@ -133,18 +104,37 @@ class MemberLocationViewController: UIViewController, MKMapViewDelegate,UITableV
         self.mapView.addAnnotation(annotation)
     }
 
-    // ピン追加時に呼び出し
+    // Flagの状態により、ピンを使い分け（ピン追加時に呼び出し）   0918
     func mapView(mapView: MKMapView, viewForAnnotation annotation: MKAnnotation) -> MKAnnotationView? {
-        let reuseId = "pin"
-        var pinView = mapView.dequeueReusableAnnotationViewWithIdentifier(reuseId) as? MKPinAnnotationView
-        if pinView == nil {
-            pinView = MKPinAnnotationView(annotation: annotation, reuseIdentifier: reuseId)
-            pinView?.animatesDrop = true
-            pinView?.canShowCallout = true
+        let reuseIdRed = "pin"
+        let reuseIdBlue = "pin2"
+        
+        // 画面表示時に設置する赤色ピン
+        if annotaionFlag == false {
+            var pinView = mapView.dequeueReusableAnnotationViewWithIdentifier(reuseIdRed) as? MKPinAnnotationView
+            if pinView == nil {
+                pinView = MKPinAnnotationView(annotation: annotation, reuseIdentifier: reuseIdRed)
+                pinView?.animatesDrop = false
+                pinView?.canShowCallout = true
+            } else {
+                pinView?.annotation = annotation
+            }
+            return pinView
+            
+        // テーブルセルタップ時に、設置する青色ピン
         } else {
-            pinView?.annotation = annotation
+            var pinView = mapView.dequeueReusableAnnotationViewWithIdentifier(reuseIdBlue) as? MKPinAnnotationView
+            if pinView == nil {
+                pinView = MKPinAnnotationView(annotation: annotation, reuseIdentifier: reuseIdBlue)
+                pinView?.animatesDrop = true
+                pinView?.canShowCallout = true
+                pinView?.pinTintColor = UIColor.blueColor()
+            } else {
+                pinView?.annotation = annotation
+            }
+            annotaionFlag = false
+            return pinView
         }
-        return pinView
     }
     
     // セクション数
@@ -170,33 +160,39 @@ class MemberLocationViewController: UIViewController, MKMapViewDelegate,UITableV
         let dateAndTime = locationArray[indexPath.row]["dateAndTime"] as? String
         cell.textLabel?.text = dateAndTime
         
-        // サブタイトルに住所を表示
-        if addressArray.count == locationArray.count {
-            let address = addressArray[indexPath.row]
-            cell.detailTextLabel?.text = address
-        }
-/*
+        // サブタイトルに住所を表示 0918
+        let address = locationArray[indexPath.row]["address"] as? String
+        cell.detailTextLabel?.text = address
+
+        return cell
+    }
+    
+    // セルタップ時アクション  0918
+    func tableView(tableView: UITableView, didSelectRowAtIndexPath indexPath: NSIndexPath) {
+        
+        // ピン初期化
+        self.mapView.removeAnnotations(annotationArray)
+        annotationArray = []
+        
+        // 選択したセルの位置情報を取得
         let latitude = locationArray[indexPath.row]["latitude"] as? CLLocationDegrees
         let longitude = locationArray[indexPath.row]["longitude"] as? CLLocationDegrees
+        let time = locationArray[indexPath.row]["dateAndTime"] as? String
         
-        // 逆ジオコーディング
-        let myGeocoder: CLGeocoder = CLGeocoder()
-        myGeocoder.reverseGeocodeLocation(CLLocation(latitude: latitude!, longitude: longitude!), completionHandler: {(placemarks, error) in
-            if(error == nil) {
-                for placemark in placemarks! {
-                    // 取得できない住所は空文字。
-                    let administarative = placemark.administrativeArea ?? "住所不明"
-                    let locality = placemark.locality ?? ""
-                    let thorough = placemark.thoroughfare ?? ""
-                    let subthorough = placemark.subThoroughfare ?? ""
-                    cell.detailTextLabel?.text = "\(administarative)\(locality)\(thorough)\(subthorough)"
-                }
-            } else {
-                cell.detailTextLabel?.text = "住所不明"
-            }
-        })
-*/
-        return cell
+        // 取得した位置にマップ移動
+        if (latitude != nil)&&(longitude != nil)&&(time != nil) {
+            let coordinate = CLLocationCoordinate2DMake(latitude!, longitude!)
+            let region = MKCoordinateRegionMakeWithDistance(coordinate, 10000, 10000)
+            self.mapView.setRegion(region, animated: true)
+            
+            // 強調ピン(青色)を設置
+            let annotation = MKPointAnnotation()
+            annotation.coordinate = coordinate
+            annotation.title = time!
+            annotationArray.insert(annotation, atIndex: 0)
+            annotaionFlag = true
+            self.mapView.addAnnotation(annotationArray.first!)
+        }
     }
     
     // slideInViewの初期表示設定
@@ -208,6 +204,8 @@ class MemberLocationViewController: UIViewController, MKMapViewDelegate,UITableV
     
     // slideInViewタップ時のアクション
     func slideView(tapGestureRecognizer: UITapGestureRecognizer) {
+        
+        // タップ位置がtableViewの範囲外の時、スライドアクションを実行
         if tapGestureRecognizer.view != nil {
             slideInViewOpen = !self.slideInViewOpen
             UIView.animateWithDuration(0.3, animations: { () -> Void in

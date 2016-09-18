@@ -74,15 +74,16 @@ class ViewController: UIViewController, CLLocationManagerDelegate, MKMapViewDele
 
         uid = FIRAuth.auth()?.currentUser?.uid
         
-        // 自身の位置履歴を取得・更新（DB上にデータない時は、in以降を実行せず）
+        // 自身の位置履歴を取得・更新（DB上にデータない時は、in以降は実行されず）
         locationsRef.child(uid!).observeEventType(.ChildAdded, withBlock: { snapshot in
             let valueDictionary = snapshot.value as! [String : AnyObject]
+            let dateAndTime = valueDictionary["dateAndTime"] as? String
             let latitude = valueDictionary["latitude"] as? CLLocationDegrees
             let longitude = valueDictionary["longitude"] as? CLLocationDegrees
-            let dateAndTime = valueDictionary["dateAndTime"] as? String
+            let address = valueDictionary["address"] as? String     // 0918
             
-            if (latitude != nil)&&(longitude != nil)&&(dateAndTime != nil) {
-                self.locationDic = ["latitude":latitude!, "longitude":longitude!, "dateAndTime":dateAndTime!]
+            if (latitude != nil)&&(longitude != nil)&&(dateAndTime != nil)&&(address != nil) {
+                self.locationDic = ["dateAndTime": dateAndTime!, "latitude": latitude!, "longitude": longitude!, "address": address!]   // 0918
                 self.locationArray.insert(self.locationDic, atIndex: 0)
                 
                 // ピンの設置
@@ -90,48 +91,10 @@ class ViewController: UIViewController, CLLocationManagerDelegate, MKMapViewDele
             }
         })
         
-        // 位置データの数を取得
+        // 位置データの数を取得（locationArrayへのデータ設定完了後に実行）
         locationsRef.child(uid!).observeEventType(.Value, withBlock: { snapshot in
             let valueDictionary = snapshot.value
             self.dataCount = valueDictionary?.count
-            
-            if self.dataCount != nil {
-                self.addressArray = [String](count: self.dataCount!, repeatedValue: "")
-            
-                // ボタンタイトル設定
-                self.setButtonTitle()
-            
-                // 逆ジオコーディング結果をlocationArrayと紐付けするために数字ラベルを付与
-                var count = 0
-                for location in self.locationArray {
-                    count = count + 1
-                    let latitude = location["latitude"] as? CLLocationDegrees
-                    let longitude = location["longitude"] as? CLLocationDegrees
-                    self.reverseGeocode(latitude!, longitude!, count)
-                }
-            }
-        })
-        
-    }
-    
-    // 逆ジオコーディング
-    func reverseGeocode(latitude: CLLocationDegrees, _ longitude: CLLocationDegrees, _ count: Int) {
-        let myGeocoder: CLGeocoder = CLGeocoder()
-        myGeocoder.reverseGeocodeLocation(CLLocation(latitude: latitude, longitude: longitude), completionHandler: {(placemarks, error) in
-            var address: String = ""
-            if(error == nil) {
-                for placemark in placemarks! {
-                    // 住所取得できない場合は住所不明、もしくは空文字
-                    let administarative = placemark.administrativeArea ?? "住所不明"
-                    let locality = placemark.locality ?? ""
-                    let thorough = placemark.thoroughfare ?? ""
-                    let subthorough = placemark.subThoroughfare ?? ""
-                    address = "\(administarative)\(locality)\(thorough)\(subthorough)"
-                }
-            } else {
-                address = "住所不明"
-            }
-            self.addressArray[count - 1] = address
             
             // 最新の位置履歴をマップの中心とする（無ければ東京駅を中心）
             let newLatitude = self.locationArray.first?["latitude"] as? CLLocationDegrees
@@ -139,20 +102,19 @@ class ViewController: UIViewController, CLLocationManagerDelegate, MKMapViewDele
             let region: MKCoordinateRegion
             if (newLatitude != nil) && (newLongitude != nil) {
                 let coordinate = CLLocationCoordinate2DMake(newLatitude!, newLongitude!)
-                region = MKCoordinateRegionMakeWithDistance(coordinate, 100000, 100000)
+                region = MKCoordinateRegionMakeWithDistance(coordinate, 10000, 10000)
             } else {
                 // 東京駅を中心に四方1,000kmを表示領域に設定
                 let coordinate = CLLocationCoordinate2DMake(35.68, 139.76)
                 region = MKCoordinateRegionMakeWithDistance(coordinate, 1000000, 1000000)
             }
             self.mapView.setRegion(region, animated: true)
-
+            
             // テーブルビュー更新
             self.tableView.reloadData()
         })
-
     }
-    
+
     // ピンの位置、タイトルを設定
     func settingAnnotation(latitude: CLLocationDegrees, _ longitude: CLLocationDegrees, _ dateAndTime: String) {
         let annotation = MKPointAnnotation()
@@ -226,8 +188,8 @@ class ViewController: UIViewController, CLLocationManagerDelegate, MKMapViewDele
                 }
             }
             
-            // 位置情報を30分毎にサーバへ保存するタイマーを作成
-            timer = NSTimer.scheduledTimerWithTimeInterval(30, target: self, selector: #selector(ViewController.onTimer(_:)), userInfo: nil, repeats: true)
+            // 位置情報を1分毎にサーバへ保存するタイマーを作成
+            timer = NSTimer.scheduledTimerWithTimeInterval(60, target: self, selector: #selector(ViewController.onTimer(_:)), userInfo: nil, repeats: true)
             
             // ボタン表示変更
             locationButton.enabled = false
@@ -245,13 +207,36 @@ class ViewController: UIViewController, CLLocationManagerDelegate, MKMapViewDele
         }
     }
     
-    // 位置データ(緯度、経度、日付・時刻)をサーバへアップ
+    // 0918更新：位置データ(時刻、緯度、経度、住所)をサーバへアップ
     func upLocation(latitude: CLLocationDegrees, _ longitude: CLLocationDegrees) {
         let date = NSDate()
         let dateAndTimeString: String = dateAndTimeFormat(date)
-        let postData: [String: AnyObject] = ["dateAndTime": dateAndTimeString, "latitude": latitude, "longitude": longitude]
-        self.locationsRef.child(uid!).childByAutoId().setValue(postData)
-        print("サーバへ送信")
+
+         let myGeocoder: CLGeocoder = CLGeocoder()
+         myGeocoder.reverseGeocodeLocation(CLLocation(latitude: latitude, longitude: longitude), completionHandler: {(placemarks, error) in
+            var address: String = ""
+            if(error == nil) {
+                for placemark in placemarks! {
+                    // 住所取得できない場合は住所不明、もしくは空文字
+                    let administarative = placemark.administrativeArea ?? "住所不明"
+                    let locality = placemark.locality ?? ""
+                    let thorough = placemark.thoroughfare ?? ""
+                    let subthorough = placemark.subThoroughfare ?? ""
+                    address = "\(administarative)\(locality)\(thorough)\(subthorough)"
+                    
+                    // サーバへデータ送信
+                    let postData: [String: AnyObject] = ["dateAndTime": dateAndTimeString, "latitude": latitude,    "longitude": longitude, "address": address]
+                    self.locationsRef.child(self.uid!).childByAutoId().setValue(postData)
+                }
+            } else {
+                address = "住所不明"
+         
+                // サーバへデータ送信
+                let postData: [String: AnyObject] = ["dateAndTime": dateAndTimeString, "latitude": latitude,    "longitude": longitude, "address": address]
+                self.locationsRef.child(self.uid!).childByAutoId().setValue(postData)
+            }
+            print("サーバへ送信")
+        })
     }
     
     // 自身の位置データが96個（2日分）を上回ったら、古い方から削除
@@ -313,11 +298,9 @@ class ViewController: UIViewController, CLLocationManagerDelegate, MKMapViewDele
         let dateAndTime = locationArray[indexPath.row]["dateAndTime"] as? String
         cell.textLabel?.text = dateAndTime
 
-        // サブタイトルに住所を表示
-        if addressArray.count == locationArray.count {
-            let address = addressArray[indexPath.row]
-            cell.detailTextLabel?.text = address
-        }
+        // サブタイトルに住所を表示 0918
+        let address = locationArray[indexPath.row]["address"] as? String
+        cell.detailTextLabel?.text = address
         
         return cell
     }
