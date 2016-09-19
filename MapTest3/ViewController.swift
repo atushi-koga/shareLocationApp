@@ -34,6 +34,13 @@ class ViewController: UIViewController, CLLocationManagerDelegate, MKMapViewDele
     // 位置データカウンター
     var dataCount: Int?
     
+    // ピンの種類を設定するフラグ
+    var annotaionFlag = false
+    
+    // 強調ピン(青色)を入れる配列
+    var annotationArray: [MKPointAnnotation] = []
+    
+    
     override func viewDidLoad() {
         super.viewDidLoad()
         
@@ -44,11 +51,6 @@ class ViewController: UIViewController, CLLocationManagerDelegate, MKMapViewDele
         // テーブルビューの初期設定
         tableView.delegate = self
         tableView.dataSource = self
-        
-        // slideInViewの初期設定
-        slideInView.layer.borderWidth = 1.0
-        let tapGestureRecognizer = UITapGestureRecognizer(target: self, action: #selector(ViewController.slideView(_:)))
-        slideInView.addGestureRecognizer(tapGestureRecognizer)
         
         // locationButtonの初期設定
         locationButton.layer.borderWidth = 0.8
@@ -123,21 +125,43 @@ class ViewController: UIViewController, CLLocationManagerDelegate, MKMapViewDele
         self.mapView.addAnnotation(annotation)
     }
     
-    // ピン追加時に呼び出し
+    // ピンを表示。Flagの値により赤色・青色を使い分け
     func mapView(mapView: MKMapView, viewForAnnotation annotation: MKAnnotation) -> MKAnnotationView? {
+        
+        // 現在地アイコン表示
         if annotation is MKUserLocation {
             return nil
         }
-        let reuseId = "pin"
-        var pinView = mapView.dequeueReusableAnnotationViewWithIdentifier(reuseId) as? MKPinAnnotationView
-        if pinView == nil {
-            pinView = MKPinAnnotationView(annotation: annotation, reuseIdentifier: reuseId)
-            pinView?.animatesDrop = false
-            pinView?.canShowCallout = true
-        } else {
-            pinView?.annotation = annotation
-        }
-        return pinView
+
+        let reuseIdRed = "pin"
+        let reuseIdBlue = "pin2"
+        
+         // 画面表示時に設置する赤色ピン
+         if annotaionFlag == false {
+            var pinView = mapView.dequeueReusableAnnotationViewWithIdentifier(reuseIdRed) as? MKPinAnnotationView
+            if pinView == nil {
+                pinView = MKPinAnnotationView(annotation: annotation, reuseIdentifier: reuseIdRed)
+                pinView?.animatesDrop = false
+                pinView?.canShowCallout = true
+            } else {
+                pinView?.annotation = annotation
+            }
+            return pinView
+         
+         // テーブルセルタップ時に、設置する青色ピン
+         } else {
+            var pinView = mapView.dequeueReusableAnnotationViewWithIdentifier(reuseIdBlue) as? MKPinAnnotationView
+            if pinView == nil {
+                pinView = MKPinAnnotationView(annotation: annotation, reuseIdentifier: reuseIdBlue)
+                pinView?.animatesDrop = true
+                pinView?.canShowCallout = true
+                pinView?.pinTintColor = UIColor.blueColor()
+            } else {
+                pinView?.annotation = annotation
+            }
+            annotaionFlag = false
+            return pinView
+         }
     }
     
     // 位置取得が失敗した時に呼び出し
@@ -304,33 +328,63 @@ class ViewController: UIViewController, CLLocationManagerDelegate, MKMapViewDele
         
         return cell
     }
-    
-    
+
+
+     // セルタップ時アクション
+     func tableView(tableView: UITableView, didSelectRowAtIndexPath indexPath: NSIndexPath) {
+     
+        // ピン初期化
+        self.mapView.removeAnnotations(annotationArray)
+        annotationArray = []
+     
+        // 選択したセルの位置情報を取得
+        let latitude = locationArray[indexPath.row]["latitude"] as? CLLocationDegrees
+        let longitude = locationArray[indexPath.row]["longitude"] as? CLLocationDegrees
+        let time = locationArray[indexPath.row]["dateAndTime"] as? String
+     
+        // 取得した位置にマップ移動
+        if (latitude != nil)&&(longitude != nil)&&(time != nil) {
+        let coordinate = CLLocationCoordinate2DMake(latitude!, longitude!)
+        let region = MKCoordinateRegionMakeWithDistance(coordinate, 10000, 10000)
+        self.mapView.setRegion(region, animated: true)
+     
+        // 強調ピン(青色)を設置
+        let annotation = MKPointAnnotation()
+        annotation.coordinate = coordinate
+        annotation.title = time!
+        annotationArray.insert(annotation, atIndex: 0)
+        annotaionFlag = true
+        self.mapView.addAnnotation(annotationArray.first!)
+        }
+        
+        // slideInViewを閉じる
+        slideInViewOpen = !self.slideInViewOpen
+        UIView.animateWithDuration(0.3, animations: { () -> Void in
+            self.slideInView.frame = self.slideInViewFrame(self.slideInViewOpen)
+        })
+    }
+
     // slideInViewの初期表示設定
     override func viewDidLayoutSubviews() {
         slideInView.frame = slideInViewFrame(self.slideInViewOpen)
         slideInView.backgroundColor = UIColor.orangeColor()
     }
     
-    // slideInViewタップ時のアクション
-    func slideView(tapGestureRecognizer: UITapGestureRecognizer) {
-        if tapGestureRecognizer.view != nil {
-            slideInViewOpen = !self.slideInViewOpen
-            UIView.animateWithDuration(0.3, animations: { () -> Void in
-                self.slideInView.frame = self.slideInViewFrame(self.slideInViewOpen)
-            })
-        }
+    // サーチボタンタップでslideInViewの表示切り替え
+    @IBAction func tapListButton(sender: AnyObject) {
+        slideInViewOpen = !self.slideInViewOpen
+        UIView.animateWithDuration(0.3, animations: { () -> Void in
+            self.slideInView.frame = self.slideInViewFrame(self.slideInViewOpen)
+        })
     }
     
     // slideInViewを全表示もしくは一部表示
     func slideInViewFrame(open: Bool) -> CGRect {
         var frame = slideInView.frame
         frame.origin.x = self.view.bounds.maxX
-        frame.origin.y = self.topLayoutGuide.length + 30
+        frame.origin.y = self.topLayoutGuide.length
         if open {
             frame.origin.x -= frame.size.width
-        } else {
-            frame.origin.x -= 20
         }
         return frame
     }

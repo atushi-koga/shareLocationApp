@@ -13,7 +13,6 @@ class MemberLocationViewController: UIViewController, MKMapViewDelegate,UITableV
     @IBOutlet weak var slideInView: UIView!
     @IBOutlet weak var tableView: UITableView!
     
-    var uid: String?
     var memberUid: String?
     var memberName: String!
 
@@ -24,7 +23,7 @@ class MemberLocationViewController: UIViewController, MKMapViewDelegate,UITableV
     // slideInViewのframe幅を管理
     var slideInViewOpen = false
     
-    // ①位置データを入れる辞書配列、②その位置データを入れる配列、③住所を入れる配列
+    // 位置データを入れる辞書配列、その位置データを入れる配列、住所を入れる配列を用意
     var locationDic: [String: AnyObject] = [ : ]
     var locationArray:[AnyObject] = []
     var addressArray: [String] = []
@@ -45,12 +44,7 @@ class MemberLocationViewController: UIViewController, MKMapViewDelegate,UITableV
         // テーブルビューの初期設定
         tableView.delegate = self
         tableView.dataSource = self
-        
-        // slideInviewの初期設定
-        slideInView.layer.borderWidth = 1.0
-        let tapGestureRecognizer = UITapGestureRecognizer(target: self, action: #selector(MemberLocationViewController.slideView(_:)))
-        slideInView.addGestureRecognizer(tapGestureRecognizer)
-        
+                
         //マップビューの初期設定
         mapView.delegate = self
         
@@ -104,8 +98,9 @@ class MemberLocationViewController: UIViewController, MKMapViewDelegate,UITableV
         self.mapView.addAnnotation(annotation)
     }
 
-    // Flagの状態により、ピンを使い分け（ピン追加時に呼び出し）   0918
+    // ピンを表示。Flagの値により赤色・青色を使い分け    0918
     func mapView(mapView: MKMapView, viewForAnnotation annotation: MKAnnotation) -> MKAnnotationView? {
+        
         let reuseIdRed = "pin"
         let reuseIdBlue = "pin2"
         
@@ -193,6 +188,12 @@ class MemberLocationViewController: UIViewController, MKMapViewDelegate,UITableV
             annotaionFlag = true
             self.mapView.addAnnotation(annotationArray.first!)
         }
+        
+        // slideInViewを閉じる
+        slideInViewOpen = !self.slideInViewOpen
+        UIView.animateWithDuration(0.3, animations: { () -> Void in
+            self.slideInView.frame = self.slideInViewFrame(self.slideInViewOpen)
+        })
     }
     
     // slideInViewの初期表示設定
@@ -202,27 +203,21 @@ class MemberLocationViewController: UIViewController, MKMapViewDelegate,UITableV
         slideInView.backgroundColor = UIColor.orangeColor()
     }
     
-    // slideInViewタップ時のアクション
-    func slideView(tapGestureRecognizer: UITapGestureRecognizer) {
-        
-        // タップ位置がtableViewの範囲外の時、スライドアクションを実行
-        if tapGestureRecognizer.view != nil {
-            slideInViewOpen = !self.slideInViewOpen
-            UIView.animateWithDuration(0.3, animations: { () -> Void in
-                self.slideInView.frame = self.slideInViewFrame(self.slideInViewOpen)
-            })
-        }
+    // サーチボタンタップでslideInViewの表示切り替え
+    @IBAction func tapListButton(sender: AnyObject) {
+        slideInViewOpen = !self.slideInViewOpen
+        UIView.animateWithDuration(0.3, animations: { () -> Void in
+            self.slideInView.frame = self.slideInViewFrame(self.slideInViewOpen)
+        })
     }
     
-    // slideInViewを全表示もしくは一部表示
+    // slideInViewの表示/非表示を切り替え
     func slideInViewFrame(open: Bool) -> CGRect {
         var frame = slideInView.frame
         frame.origin.x = self.view.bounds.maxX
-        frame.origin.y = self.topLayoutGuide.length + 30
+        frame.origin.y = self.topLayoutGuide.length
         if open {
             frame.origin.x -= frame.size.width
-        } else {
-            frame.origin.x -= 20
         }
         return frame
     }

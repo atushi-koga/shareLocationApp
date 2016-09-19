@@ -35,6 +35,7 @@ class InitialViewController: UIViewController {
         
         
         // 各タブにViewControllerを割り当て
+        // "Location"、"User"はナビゲーションバー表示のため、NavigationControllerを割り当て
         let documentViewController = storyboard?.instantiateViewControllerWithIdentifier("Document")
         tabBarController.setViewController(documentViewController, atIndex: 0)
         let locationViewController = storyboard?.instantiateViewControllerWithIdentifier("Location")
