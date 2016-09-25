@@ -29,7 +29,6 @@ class ViewController: UIViewController, CLLocationManagerDelegate, MKMapViewDele
     // ①位置データを入れる辞書配列、②その位置データを入れる配列、③住所を入れる配列
     var locationDic: [String: AnyObject] = [ : ]
     var locationArray:[AnyObject] = []
-    var addressArray: [String] = []
     
     // 位置データカウンター
     var dataCount: Int?
@@ -75,6 +74,17 @@ class ViewController: UIViewController, CLLocationManagerDelegate, MKMapViewDele
         mapView.delegate = self
 
         uid = FIRAuth.auth()?.currentUser?.uid
+    }
+    
+    
+    // 画面表示のたびに最新位置データ取得、表示
+    override func viewWillAppear(animated: Bool) {
+        super.viewWillAppear(animated)
+        
+        // データ初期化
+        locationArray = []
+        mapView.removeAnnotations(mapView.annotations)
+        locationsRef.child(uid!).removeAllObservers()
         
         // 自身の位置履歴を取得・更新（DB上にデータない時は、in以降は実行されず）
         locationsRef.child(uid!).observeEventType(.ChildAdded, withBlock: { snapshot in
@@ -115,7 +125,9 @@ class ViewController: UIViewController, CLLocationManagerDelegate, MKMapViewDele
             // テーブルビュー更新
             self.tableView.reloadData()
         })
+        
     }
+    
 
     // ピンの位置、タイトルを設定
     func settingAnnotation(latitude: CLLocationDegrees, _ longitude: CLLocationDegrees, _ dateAndTime: String) {
@@ -213,7 +225,7 @@ class ViewController: UIViewController, CLLocationManagerDelegate, MKMapViewDele
             }
             
             // 位置情報を1分毎にサーバへ保存するタイマーを作成
-            timer = NSTimer.scheduledTimerWithTimeInterval(60, target: self, selector: #selector(ViewController.onTimer(_:)), userInfo: nil, repeats: true)
+            timer = NSTimer.scheduledTimerWithTimeInterval(30, target: self, selector: #selector(ViewController.onTimer(_:)), userInfo: nil, repeats: true)
             
             // ボタン表示変更
             locationButton.enabled = false
@@ -272,7 +284,7 @@ class ViewController: UIViewController, CLLocationManagerDelegate, MKMapViewDele
                 let snapshotItem = item as! FIRDataSnapshot
                 refArray.insert(snapshotItem.ref, atIndex: 0)
             }
-            if count > 96 {
+            if count > 5 {
                 refArray.last!.removeValue()
             }
         })
@@ -387,6 +399,16 @@ class ViewController: UIViewController, CLLocationManagerDelegate, MKMapViewDele
             frame.origin.x -= frame.size.width
         }
         return frame
+    }
+    
+    // 画面消える時、slideInViewを閉じる
+    override func viewWillDisappear(animated: Bool) {
+        super.viewWillDisappear(animated)
+        
+        slideInViewOpen = false
+        UIView.animateWithDuration(0.3, animations: { () -> Void in
+            self.slideInView.frame = self.slideInViewFrame(self.slideInViewOpen)
+        })
     }
     
     // NSDateを日付&時刻のString型に変換
