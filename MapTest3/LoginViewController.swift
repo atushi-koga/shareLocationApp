@@ -41,7 +41,9 @@ class LoginViewController: UIViewController {
     @IBAction func tapButtonLogin(sender: AnyObject) {
         if let address = textFieldMailAddress.text, let password = textFIeldPassword.text {
             if address.characters.isEmpty || password.characters.isEmpty {
-                SVProgressHUD.showErrorWithStatus("必要項目を入力してください")
+                
+                // ローカル通知表示
+                setLocalNotification("エラー", "必要項目を入力してください")
                 return
             }
             // 処理中を表示
@@ -49,16 +51,15 @@ class LoginViewController: UIViewController {
             
             FIRAuth.auth()?.signInWithEmail(address, password: password, completion: { user, error in
                 if error != nil {
-                    SVProgressHUD.showErrorWithStatus("ログインエラー。\n" + "メールアドレスとパスワードを確認してください。")
-                    print(error)
+                    self.setLocalNotification("エラー", "メールアドレスとパスワードを確認してください")
+                    SVProgressHUD.dismiss()
+                    
                 } else {
                     if let displayName = user?.displayName {
                         self.setDisplayName(displayName)
                     }
                     
-                    // ログイン完了を表示
                     SVProgressHUD.showSuccessWithStatus("ログイン完了")
-                    
                     self.dismissViewControllerAnimated(true, completion: nil)
                 }
             })
@@ -70,21 +71,23 @@ class LoginViewController: UIViewController {
             if let address = textFieldMailAddress.text, let password = textFIeldPassword.text,
                 let displayName = textFIeldAccount.text {
                 if address.characters.isEmpty || password.characters.isEmpty || displayName.characters.isEmpty {
-                    SVProgressHUD.showErrorWithStatus("必要項目を入力してください")
+                    
+                    setLocalNotification("エラー", "必要項目を入力してください")
                     return
                 }
-                // 処理中を表示
                 SVProgressHUD.show()
                 
                 FIRAuth.auth()?.createUserWithEmail(address, password: password) { user, error in
                     if error != nil {
-                        SVProgressHUD.showErrorWithStatus("アカウント作成エラー。\n" + "メールアドレス、パスワードを正確に入力してください。")
-                        print(error)
+                        self.setLocalNotification("エラー", "メールアドレスとパスワードを確認してください")
+                        SVProgressHUD.dismiss()
+                        
                     } else {
                         FIRAuth.auth()?.signInWithEmail(address, password: password) {user, error in
                             if error != nil {
-                                SVProgressHUD.showErrorWithStatus("アカウントを作成しましたがログインできません。\n" + "再度ログインを試みてください。")
-                                print(error)
+                                self.setLocalNotification("エラー", "アカウントを作成しましたが、ログインできませんでした。\n" + "再度ログインを試みてください。")
+                                SVProgressHUD.dismiss()
+                                
                             } else {
                                 if let user = user {
                                     let request = user.profileChangeRequest()
@@ -104,7 +107,6 @@ class LoginViewController: UIViewController {
                                             self.usersRef.child((FIRAuth.auth()?.currentUser?.uid)!).child("log").child((FIRAuth.auth()?.currentUser?.uid)!).setValue(["location": true])
                                             
                                             
-                                            // アカウント作成完了のHUD表示
                                             SVProgressHUD.showSuccessWithStatus("アカウント作成完了")
                                             self.dismissViewControllerAnimated(true, completion: nil)
                                         }
@@ -118,12 +120,25 @@ class LoginViewController: UIViewController {
     }
         
     }
+    
+    // ローカル通知を作成
+    func setLocalNotification(title: String, _ message: String) {
+        let notification = UILocalNotification()
+        notification.fireDate = NSDate()
+        notification.timeZone = NSTimeZone.defaultTimeZone()
+        notification.alertTitle = title
+        notification.alertBody = message
+        notification.soundName = UILocalNotificationDefaultSoundName
+        UIApplication.sharedApplication().presentLocalNotificationNow(notification)
+    }
+    
     // NSUserDefaultsに表示名を保存
     func setDisplayName(name: String) {
         let ud = NSUserDefaults.standardUserDefaults()
         ud.setValue(name, forKey: "DISPLAYNAME")
         ud.synchronize()
     }
+    
     
     override func didReceiveMemoryWarning() {
         super.didReceiveMemoryWarning()
